@@ -13,7 +13,6 @@ on:
       - 'configs/**'
       - 'files/**'
       - 'packages/**'
-      - 'patches/**'
       - '.github/workflows/build.yml'
 
 jobs:

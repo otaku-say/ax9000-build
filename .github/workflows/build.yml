@@ -129,9 +129,6 @@ jobs:
                    "CONFIG_PACKAGE_dnsmasq-full=y"; do
             grep -q "^$k" .config || { echo "FATAL: $k not set"; FAIL=1; }
           done
-          # 语言排他性：除 zh_Hans 外不应启用其它语言（仅保留简体中文）
-          EXTRA_LANGS=$(grep -E "^CONFIG_LUCI_LANG_[A-Za-z_]+=y" .config | grep -v "zh_Hans" || true)
-          [ -z "$EXTRA_LANGS" ] || { echo "FATAL: unexpected languages enabled:"; echo "$EXTRA_LANGS"; FAIL=1; }
           [ "$FAIL" = "0" ] || exit 1
           echo "==== config OK ===="
           echo "---- key entries ----"
@@ -143,7 +140,8 @@ jobs:
           make download -j8 || make download -j1 V=s
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        id: ccache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
           key: ccache-ax9000-${{ github.run_id }}
@@ -157,6 +155,15 @@ jobs:
             echo "==== parallel build failed, retrying single-threaded with verbose log ====";
             make -j1 V=s;
           }
+
+      - name: Save ccache (immediately after build)
+        # 编译一结束立即保存：即使后续 Verify 失败也不会浪费编译缓存
+        if: steps.ccache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ax9000-${{ github.run_id }}
 
       - name: Verify firmware contents
         run: |
@@ -201,10 +208,6 @@ jobs:
             for p in luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn luci-i18n-package-manager-zh-cn; do
               grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
             done
-            # -- 语言排他性（样本语言不应出现，警告级）--
-            for l in de fr es ja ru; do
-              grep -q "^luci-i18n-base-$l " "$m" && echo "WARN: unexpected language pack: $l" || true
-            done
           done
           [ "$FAIL" = "0" ] || { echo "FATAL: passwall 全家桶不完整，见上方 MISSING 列表"; exit 1; }
           echo "==== verify OK ===="
@@ -238,7 +241,7 @@ jobs:
             - 集成：passwall 全依赖（含 NaiveProxy）、QCN9074 vendor board-2.bin
             - 内置 `luci-app-ax900-hardware` 硬件控制（LED / 风扇 / 温度，来自 nixevol/Ax9000WRTBuild，PolyForm NC 1.0.0）
             - 第三方插件：`luci-app-wolultra`（超级网络唤醒）/ `luci-app-mini-diskmanager`（磁盘管理）/ `luci-app-natmapt`（NATMap 打洞）/ `luci-app-partexp`（分区扩容）
-            - 语言：后台默认简体中文，仅携带中文语言包（不装其它语言）
+            - 语言：后台默认简体中文（英文内置；其他语言可按需加装）
             - 中国区优化：`default-settings-chn`（时区 Asia/Shanghai、国内 NTP）；软件源 = 南大镜像（snapshots 滚动路径，跟随官方更新）
             - 默认：SSID `AX9000` 系列（无密码）、后台免密登录、LAN `192.168.31.1`
             - 灯效：顶部蓝常亮、前上联网指示（在线绿 / 断网红）、前下系统灯语；均可在 LuCI「AX9000 硬件」中调整

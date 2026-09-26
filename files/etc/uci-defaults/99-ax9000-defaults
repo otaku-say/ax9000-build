@@ -6,7 +6,7 @@
 #   2) WiFi 全开 + 无密码 + SSID 区分（AX9000 / AX9000-5G / AX9000-5G-2）
 #   3) 网页后台免密（root 空密码）
 #   4) QCN9074 vendor board-2.bin 兜底
-#   5) 顶部大灯初始状态清理（topled 服务随后接管）
+#   5) AX9000 硬件控制默认（顶部/前灯灯效与风扇，由 ax900-hardware 接管）
 # ============================================================
 
 # ---------- 1) LAN 地址 ----------
@@ -45,12 +45,23 @@ sed -i 's|^root:[^:]*:|root::|' /etc/shadow
 # ---------- 4) vendor board-2.bin 兜底（防止被包管理覆盖）----------
 [ -f /etc/board-2.bin ] && cp -f /etc/board-2.bin /lib/firmware/ath11k/QCN9074/hw1.0/board-2.bin
 
-# ---------- 5) 顶部大灯初始清理 ----------
-for led in "top:red" "top:green" "top:blue"; do
-	[ -e "/sys/class/leds/$led" ] && {
-		echo none > "/sys/class/leds/$led/trigger" 2>/dev/null
-		echo 0 > "/sys/class/leds/$led/brightness" 2>/dev/null
-	}
+# ---------- 5) AX9000 硬件控制默认（LED / 风扇）----------
+# 由 luci-app-ax900-hardware 接管（LuCI → AX9000 硬件）
+# 顶部大灯：固定蓝色常亮（可改为温度联动 / 七色轮播 / 闪烁）
+uci set ax900-hardware.main.top_mode='fixed'
+uci set ax900-hardware.main.top_fixed_color='blue'
+uci set ax900-hardware.main.top_blink='0'
+# 前上灯：联网指示（在线绿 / 断网红）
+uci set ax900-hardware.main.network_led_mode='connectivity'
+uci set ax900-hardware.main.network_online_color='green'
+uci set ax900-hardware.main.network_offline_color='red'
+# 前下灯：保留系统标准灯语（default = 启动黄闪 → 就绪蓝常亮）
+uci set ax900-hardware.main.system_led_mode='default'
+# 温度联动改顶灯：默认关闭（风扇自动温控逻辑不受影响）；
+# 如需"顶部按温度变色"（≤50°C 绿 / ≥50°C 蓝 / ≥60°C 黄 / ≥70°C 红），将各 fan_rule 的 led_control 改为 1
+for r in $(uci show ax900-hardware 2>/dev/null | sed -n 's/^ax900-hardware\.\([^=]*\)=fan_rule$/\1/p'); do
+	uci set ax900-hardware.$r.led_control='0'
 done
+uci commit ax900-hardware
 
 exit 0

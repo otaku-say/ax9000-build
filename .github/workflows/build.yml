@@ -1,7 +1,7 @@
 # ============================================================
 # AX9000 云编译工作流
 # 源码: VIKINGYFY/immortalwrt@main (满血 NSS 驱动)
-# 集成: passwall 官方包 + QCN9074 vendor board + LED 标签修复
+# 集成: passwall 官方包 + QCN9074 vendor board + luci-app-ax900-hardware 硬件控制
 # ============================================================
 name: Build AX9000 Firmware
 
@@ -12,6 +12,7 @@ on:
     paths:
       - 'configs/**'
       - 'files/**'
+      - 'packages/**'
       - 'patches/**'
       - '.github/workflows/build.yml'
 
@@ -38,19 +39,19 @@ jobs:
       - name: Clone ImmortalWrt source (VIKINGYFY main)
         run: git clone --depth 1 https://github.com/VIKINGYFY/immortalwrt -b main immortalwrt
 
-      - name: Apply LED label patch
-        run: |
-          cd immortalwrt
-          git apply --verbose ../patches/0001-ax9000-led-labels.patch
-          echo "==== verify patch ===="
-          grep -A2 "top-red {" target/linux/qualcommax/dts/ipq8072-ax9000.dts | head -5
-
       - name: Inject custom files
         run: |
           mkdir -p immortalwrt/files
           cp -r files/. immortalwrt/files/
           echo "==== files injected ===="
           find immortalwrt/files -type f | head -20
+
+      - name: Inject custom packages
+        run: |
+          mkdir -p immortalwrt/package/ax9000-custom
+          cp -r packages/. immortalwrt/package/ax9000-custom/
+          echo "==== custom packages injected ===="
+          find immortalwrt/package/ax9000-custom -name Makefile
 
       - name: Setup feeds and integrate passwall
         run: |
@@ -80,6 +81,8 @@ jobs:
           echo "==== assertions ===="
           FAIL=0
           for k in "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax9000=y" \
+                   "CONFIG_PACKAGE_luci-app-ax900-hardware=y" \
+                   "CONFIG_PACKAGE_luci-i18n-ax900-hardware-zh-cn=y" \
                    "CONFIG_PACKAGE_luci-app-passwall=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" \
@@ -117,7 +120,7 @@ jobs:
           cd immortalwrt/bin/targets/qualcommax/ipq807x
           for m in *.manifest; do
             echo "==== $m ===="
-            for p in luci-app-passwall xray-core sing-box chinadns-ng dnsmasq-full luci-i18n-passwall-zh-cn; do
+            for p in luci-app-passwall xray-core sing-box chinadns-ng dnsmasq-full luci-i18n-passwall-zh-cn luci-app-ax900-hardware luci-i18n-ax900-hardware-zh-cn; do
               if grep -q "^$p " "$m"; then echo "OK: $p"; else echo "MISSING: $p"; fi
             done
           done
@@ -148,9 +151,10 @@ jobs:
             ## Xiaomi AX9000 自动构建固件
 
             - 源码：VIKINGYFY/immortalwrt @ main（满血 NSS 驱动）
-            - 集成：passwall 全依赖、QCN9074 vendor board-2.bin、LED 标签修复
+            - 集成：passwall 全依赖、QCN9074 vendor board-2.bin
+            - 内置 `luci-app-ax900-hardware` 硬件控制（LED / 风扇 / 温度，来自 nixevol/Ax9000WRTBuild，PolyForm NC 1.0.0）
             - 默认：SSID `AX9000` 系列（无密码）、后台免密登录、LAN `192.168.31.1`
-            - 顶部大灯：联网状态指示（绿=在线 / 红闪=离线 / 启动蓝闪），前下灯保留系统灯语
+            - 灯效：顶部蓝常亮、前上联网指示（在线绿 / 断网红）、前下系统灯语；均可在 LuCI「AX9000 硬件」中调整
 
             固件说明：`xiaomi_ax9000`（OpenWrt expand layout），可直接从同布局系统 sysupgrade 升级。
             设备布局可用 `cat /proc/device-tree/model` 确认（输出 `Xiaomi AX9000`）。

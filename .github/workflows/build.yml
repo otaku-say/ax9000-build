@@ -80,7 +80,6 @@ jobs:
           echo "==== assertions ===="
           FAIL=0
           for k in "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax9000=y" \
-                   "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax9000-stock=y" \
                    "CONFIG_PACKAGE_luci-app-passwall=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" \
@@ -153,7 +152,7 @@ jobs:
             - 默认：SSID `AX9000` 系列（无密码）、后台免密登录、LAN `192.168.31.1`
             - 顶部大灯：联网状态指示（绿=在线 / 红闪=离线 / 启动蓝闪），前下灯保留系统灯语
 
-            固件选择：`xiaomi_ax9000` = OpenWrt expand layout；`xiaomi_ax9000-stock` = stock layout。
-            可用 `cat /proc/device-tree/model` 判断设备当前布局。
+            固件说明：`xiaomi_ax9000`（OpenWrt expand layout），可直接从同布局系统 sysupgrade 升级。
+            设备布局可用 `cat /proc/device-tree/model` 确认（输出 `Xiaomi AX9000`）。
           files: out/*
           make_latest: true

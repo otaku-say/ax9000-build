@@ -25,11 +25,8 @@ Xiaomi AX9000 固件云端构建仓库 —— 基于 [VIKINGYFY/immortalwrt](htt
 
 | 文件 | 说明 |
 |---|---|
-| `*-xiaomi_ax9000-squashfs-sysupgrade.bin` | OpenWrt expand layout（`/proc/device-tree/model` = `Xiaomi AX9000`） |
-| `*-xiaomi_ax9000-stock-squashfs-sysupgrade.bin` | stock layout（model 含 `(stock layout)`） |
+| `*-xiaomi_ax9000-squashfs-sysupgrade.bin` | 主固件（OpenWrt expand layout，`cat /proc/device-tree/model` 输出 `Xiaomi AX9000`） |
 | `*-initramfs-*.ubi` | initramfs 中转镜像（首次从原厂刷入时使用） |
-
-设备布局判断：SSH 执行 `cat /proc/device-tree/model`，与当前系统匹配即可。
 
 ## 目录结构
 

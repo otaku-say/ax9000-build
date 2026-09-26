@@ -85,6 +85,7 @@ jobs:
                    "CONFIG_PACKAGE_luci-app-passwall=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" \
+                   "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_NaiveProxy=y" \
                    "CONFIG_PACKAGE_dnsmasq-full=y"; do
             grep -q "^$k" .config || { echo "FATAL: $k not set"; FAIL=1; }
           done
@@ -117,12 +118,34 @@ jobs:
       - name: Verify firmware contents
         run: |
           cd immortalwrt/bin/targets/qualcommax/ipq807x
+          ls *.manifest >/dev/null 2>&1 || { echo "FATAL: manifest not found"; exit 1; }
+          FAIL=0
           for m in *.manifest; do
             echo "==== $m ===="
-            for p in luci-app-passwall xray-core sing-box chinadns-ng dnsmasq-full luci-i18n-passwall-zh-cn luci-app-ax900-hardware luci-i18n-ax900-hardware-zh-cn; do
-              if grep -q "^$p " "$m"; then echo "OK: $p"; else echo "MISSING: $p"; fi
+            # -- 设备 / 硬件控制 / 基础 --
+            for p in luci-app-ax900-hardware luci-i18n-ax900-hardware-zh-cn dnsmasq-full; do
+              grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
+            done
+            # -- passwall 前端 + 中文语言包 --
+            for p in luci-app-passwall luci-i18n-passwall-zh-cn; do
+              grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
+            done
+            # -- passwall 全家桶：引擎 / 插件 / 数据 / 工具（缺失即构建失败）--
+            for p in xray-core xray-plugin sing-box hysteria naiveproxy \
+                     shadowsocks-rust-sslocal shadowsocks-rust-ssserver \
+                     shadowsocksr-libev-ssr-local shadowsocksr-libev-ssr-redir shadowsocksr-libev-ssr-server \
+                     shadow-tls simple-obfs-client v2ray-plugin \
+                     v2ray-geoip v2ray-geosite geoview \
+                     chinadns-ng dns2socks microsocks tcping ipt2socks haproxy; do
+              grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
+            done
+            # -- kmod 提示级检查（内核内置时可能无独立条目，不判失败）--
+            for p in kmod-nft-tproxy kmod-nft-socket kmod-nft-nat kmod-nf-reject kmod-nf-reject6; do
+              grep -q "^$p " "$m" && echo "OK(kmod): $p" || echo "WARN(kmod): $p not in manifest (可能是内核内置)"
             done
           done
+          [ "$FAIL" = "0" ] || { echo "FATAL: passwall 全家桶不完整，见上方 MISSING 列表"; exit 1; }
+          echo "==== verify OK ===="
 
       - name: Collect artifacts
         run: |
@@ -150,7 +173,7 @@ jobs:
             ## Xiaomi AX9000 自动构建固件
 
             - 源码：VIKINGYFY/immortalwrt @ main（满血 NSS 驱动）
-            - 集成：passwall 全依赖、QCN9074 vendor board-2.bin
+            - 集成：passwall 全依赖（含 NaiveProxy）、QCN9074 vendor board-2.bin
             - 内置 `luci-app-ax900-hardware` 硬件控制（LED / 风扇 / 温度，来自 nixevol/Ax9000WRTBuild，PolyForm NC 1.0.0）
             - 默认：SSID `AX9000` 系列（无密码）、后台免密登录、LAN `192.168.31.1`
             - 灯效：顶部蓝常亮、前上联网指示（在线绿 / 断网红）、前下系统灯语；均可在 LuCI「AX9000 硬件」中调整

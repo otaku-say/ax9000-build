@@ -78,14 +78,19 @@ jobs:
           cp ../configs/seed.config .config
           make defconfig
           echo "==== assertions ===="
+          FAIL=0
           for k in "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax9000=y" \
+                   "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax9000-stock=y" \
                    "CONFIG_PACKAGE_luci-app-passwall=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" \
                    "CONFIG_PACKAGE_dnsmasq-full=y"; do
-            grep -q "^$k" .config || { echo "FATAL: $k not set"; exit 1; }
+            grep -q "^$k" .config || { echo "FATAL: $k not set"; FAIL=1; }
           done
+          [ "$FAIL" = "0" ] || exit 1
           echo "==== config OK ===="
+          echo "---- key entries ----"
+          grep -E "^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|qualcommax_ipq807x_DEVICE)" .config | head -8
 
       - name: Download sources
         run: |

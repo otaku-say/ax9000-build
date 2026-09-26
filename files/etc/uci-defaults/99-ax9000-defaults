@@ -1,0 +1,56 @@
+#!/bin/sh
+# ============================================================
+# AX9000 首次启动默认化脚本（uci-defaults）
+# 功能：
+#   1) LAN 地址 192.168.31.1
+#   2) WiFi 全开 + 无密码 + SSID 区分（AX9000 / AX9000-5G / AX9000-5G-2）
+#   3) 网页后台免密（root 空密码）
+#   4) QCN9074 vendor board-2.bin 兜底
+#   5) 顶部大灯初始状态清理（topled 服务随后接管）
+# ============================================================
+
+# ---------- 1) LAN 地址 ----------
+uci set network.lan.ipaddr='192.168.31.1'
+uci commit network
+
+# ---------- 2) WiFi ----------
+# 2.1 补全无线默认配置（若缺失则生成）
+wifi config >/dev/null 2>&1
+
+# 2.2 启用全部 radio
+for dev in $(uci show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-device$/\1/p'); do
+	uci set wireless.$dev.disabled='0'
+done
+
+# 2.3 无密码 + AX9000 系列 SSID（多频自动去重编号）
+n2=0; n5=0; n6=0
+for iface in $(uci show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-iface$/\1/p'); do
+	dev=$(uci -q get wireless.$iface.device)
+	band=$(uci -q get wireless.$dev.band 2>/dev/null)
+	case "$band" in
+		2g) n2=$((n2+1)); ssid="AX9000"; [ $n2 -gt 1 ] && ssid="$ssid-$n2" ;;
+		5g) n5=$((n5+1)); ssid="AX9000-5G"; [ $n5 -gt 1 ] && ssid="$ssid-$n5" ;;
+		6g) n6=$((n6+1)); ssid="AX9000-6G"; [ $n6 -gt 1 ] && ssid="$ssid-$n6" ;;
+		*)  ssid="AX9000" ;;
+	esac
+	uci set wireless.$iface.ssid="$ssid"
+	uci set wireless.$iface.encryption='none'
+	uci set wireless.$iface.disabled='0'
+done
+uci commit wireless
+
+# ---------- 3) 网页后台免密（root 密码字段置空）----------
+sed -i 's|^root:[^:]*:|root::|' /etc/shadow
+
+# ---------- 4) vendor board-2.bin 兜底（防止被包管理覆盖）----------
+[ -f /etc/board-2.bin ] && cp -f /etc/board-2.bin /lib/firmware/ath11k/QCN9074/hw1.0/board-2.bin
+
+# ---------- 5) 顶部大灯初始清理 ----------
+for led in "top:red" "top:green" "top:blue"; do
+	[ -e "/sys/class/leds/$led" ] && {
+		echo none > "/sys/class/leds/$led/trigger" 2>/dev/null
+		echo 0 > "/sys/class/leds/$led/brightness" 2>/dev/null
+	}
+done
+
+exit 0

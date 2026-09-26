@@ -1,0 +1,63 @@
+#!/bin/sh
+# ============================================================
+# AX9000 顶部大灯状态指示服务（topled-daemon）
+# 依赖：dts 已打 label 补丁（top:red / top:green / top:blue）
+# 行为：启动蓝闪 -> 联网绿灯常亮 / 断网红灯闪烁（每 10 秒检测）
+# ============================================================
+
+R="/sys/class/leds/top:red"
+G="/sys/class/leds/top:green"
+B="/sys/class/leds/top:blue"
+PING_HOST="223.5.5.5"
+INTERVAL=10
+
+# 安全性检查：目标 LED 必须存在（防止未打补丁内核上空转）
+[ -e "$R/brightness" ] && [ -e "$G/brightness" ] && [ -e "$B/brightness" ] || {
+	logger -t topled "top:red/green/blue not found, exit"
+	exit 1
+}
+
+# ---------- 基础操作 ----------
+trig_none() { echo none > "$1/trigger" 2>/dev/null; }
+led_on()    { echo 1 > "$1/brightness" 2>/dev/null; }
+led_off()   { echo 0 > "$1/brightness" 2>/dev/null; }
+
+led_blink() {
+	# 用法: led_blink <LED路径> <间隔毫秒>
+	echo timer > "$1/trigger" 2>/dev/null
+	echo "$2" > "$1/delay_on" 2>/dev/null
+	echo "$2" > "$1/delay_off" 2>/dev/null
+}
+
+all_off() {
+	trig_none "$R"; trig_none "$G"; trig_none "$B"
+	led_off "$R";  led_off "$G";  led_off "$B"
+}
+
+set_state() {
+	case "$1" in
+		boot)    all_off; led_blink "$B" 300 ;;   # 启动中：蓝闪
+		online)  all_off; led_on "$G" ;;           # 在线：绿常亮
+		offline) all_off; led_blink "$R" 500 ;;    # 离线：红闪
+	esac
+}
+
+# ---------- 开机视觉：蓝闪约 3 秒 ----------
+set_state boot
+sleep 3
+
+# ---------- 主循环：仅在状态变化时操作 ----------
+CUR=""
+while true; do
+	if ping -c 1 -W 2 "$PING_HOST" >/dev/null 2>&1; then
+		NEW="online"
+	else
+		NEW="offline"
+	fi
+	if [ "$NEW" != "$CUR" ]; then
+		set_state "$NEW"
+		logger -t topled "state -> $NEW"
+		CUR="$NEW"
+	fi
+	sleep "$INTERVAL"
+done

@@ -64,4 +64,16 @@ for r in $(uci show ax900-hardware 2>/dev/null | sed -n 's/^ax900-hardware\.\([^
 done
 uci commit ax900-hardware
 
+# ---------- 6) 中国区默认设置（配合官方 default-settings-chn 包）----------
+# 6.1 界面语言：默认简体中文
+#     官方 default-settings 首次启动时会把语言重置为 auto，故先置 imm_init.lang 标记阻止
+uci -q get system.@imm_init[0] >/dev/null 2>&1 || uci -q add system imm_init >/dev/null
+uci set system.@imm_init[0].lang='1'
+uci set luci.main.lang='zh_cn'
+uci commit luci
+# 6.2 软件源：南京大学镜像（snapshots 滚动路径，跟随官方主线更新，不锁定版本）
+#     官方 default-settings-chn 脚本读取该值并替换 apk 源（https://downloads.immortalwrt.org -> 本值）
+uci set system.@imm_init[0].apk_mirror='https://mirror.nju.edu.cn/immortalwrt'
+uci commit system
+
 exit 0

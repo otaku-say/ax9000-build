@@ -72,6 +72,38 @@ jobs:
           echo "==== passwall package check ===="
           ls package/passwall-luci/luci-app-passwall/Makefile package/passwall-packages/xray-core/Makefile
 
+      - name: Integrate third-party plugins
+        run: |
+          cd immortalwrt
+          # 清理目标目录（幂等）
+          rm -rf package/luci-app-wolultra package/luci-app-mini-diskmanager \
+                 package/natmapt package/stuntman package/luci-app-natmapt package/luci-app-partexp
+          # wolultra（VIKINGYFY/packages；仅取该单包，避免带入其仓库内 sing-box 等重复包）
+          git clone --depth 1 https://github.com/VIKINGYFY/packages /tmp/src-wolultra
+          cp -r /tmp/src-wolultra/luci-app-wolultra package/luci-app-wolultra
+          # mini-diskmanager（4IceG；包位于仓库子目录）
+          git clone --depth 1 https://github.com/4IceG/luci-app-mini-diskmanager /tmp/src-diskmanager
+          cp -r /tmp/src-diskmanager/luci-app-mini-diskmanager package/luci-app-mini-diskmanager
+          # natmapt 三件套（muink）
+          git clone --depth 1 https://github.com/muink/openwrt-natmapt /tmp/src-natmapt
+          cp -r /tmp/src-natmapt package/natmapt
+          git clone --depth 1 https://github.com/muink/openwrt-stuntman /tmp/src-stuntman
+          cp -r /tmp/src-stuntman package/stuntman
+          git clone --depth 1 https://github.com/muink/luci-app-natmapt /tmp/src-luci-natmapt
+          cp -r /tmp/src-luci-natmapt package/luci-app-natmapt
+          # partexp（sirpdboy；包位于仓库子目录）
+          git clone --depth 1 https://github.com/sirpdboy/luci-app-partexp /tmp/src-partexp
+          cp -r /tmp/src-partexp/luci-app-partexp package/luci-app-partexp
+          # 清理 .git 保持构建树干净
+          rm -rf package/luci-app-wolultra/.git package/luci-app-mini-diskmanager/.git \
+                 package/natmapt/.git package/stuntman/.git package/luci-app-natmapt/.git \
+                 package/luci-app-partexp/.git
+          echo "==== third-party plugin check ===="
+          for p in luci-app-wolultra luci-app-mini-diskmanager natmapt stuntman luci-app-natmapt luci-app-partexp; do
+            if [ -f "package/$p/Makefile" ]; then echo "OK: $p"; else echo "FATAL: $p Makefile missing"; exit 1; fi
+          done
+          echo "==== third-party plugins ready ===="
+
       - name: Configure (defconfig + assertions)
         run: |
           cd immortalwrt
@@ -86,9 +118,20 @@ jobs:
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" \
                    "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_NaiveProxy=y" \
+                   "CONFIG_PACKAGE_luci-app-wolultra=y" \
+                   "CONFIG_PACKAGE_luci-app-mini-diskmanager=y" \
+                   "CONFIG_PACKAGE_luci-app-natmapt=y" \
+                   "CONFIG_PACKAGE_luci-app-partexp=y" \
+                   "CONFIG_PACKAGE_stuntman-client=y" \
+                   "CONFIG_LUCI_LANG_zh_Hans=y" \
+                   "CONFIG_PACKAGE_default-settings=y" \
+                   "CONFIG_PACKAGE_default-settings-chn=y" \
                    "CONFIG_PACKAGE_dnsmasq-full=y"; do
             grep -q "^$k" .config || { echo "FATAL: $k not set"; FAIL=1; }
           done
+          # 语言排他性：除 zh_Hans 外不应启用其它语言（仅保留简体中文）
+          EXTRA_LANGS=$(grep -E "^CONFIG_LUCI_LANG_[A-Za-z_]+=y" .config | grep -v "zh_Hans" || true)
+          [ -z "$EXTRA_LANGS" ] || { echo "FATAL: unexpected languages enabled:"; echo "$EXTRA_LANGS"; FAIL=1; }
           [ "$FAIL" = "0" ] || exit 1
           echo "==== config OK ===="
           echo "---- key entries ----"
@@ -143,6 +186,25 @@ jobs:
             for p in kmod-nft-tproxy kmod-nft-socket kmod-nft-nat kmod-nf-reject kmod-nf-reject6; do
               grep -q "^$p " "$m" && echo "OK(kmod): $p" || echo "WARN(kmod): $p not in manifest (可能是内核内置)"
             done
+            # -- 第三方插件（wolultra / mini-diskmanager / natmapt / partexp）--
+            for p in luci-app-wolultra luci-i18n-wolultra-zh-cn etherwake \
+                     luci-app-mini-diskmanager luci-i18n-mini-diskmanager-zh-cn \
+                     luci-app-natmapt luci-i18n-natmapt-zh-cn natmapt stuntman-client \
+                     luci-app-partexp luci-i18n-partexp-zh-cn; do
+              grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
+            done
+            # -- 中国区优化包（default-settings 系列）--
+            for p in default-settings default-settings-chn; do
+              grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
+            done
+            # -- LuCI 系统自身中文（核心 / 防火墙 / 包管理）--
+            for p in luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn luci-i18n-package-manager-zh-cn; do
+              grep -q "^$p " "$m" && echo "OK: $p" || { echo "MISSING: $p"; FAIL=1; }
+            done
+            # -- 语言排他性（样本语言不应出现，警告级）--
+            for l in de fr es ja ru; do
+              grep -q "^luci-i18n-base-$l " "$m" && echo "WARN: unexpected language pack: $l" || true
+            done
           done
           [ "$FAIL" = "0" ] || { echo "FATAL: passwall 全家桶不完整，见上方 MISSING 列表"; exit 1; }
           echo "==== verify OK ===="
@@ -175,6 +237,9 @@ jobs:
             - 源码：VIKINGYFY/immortalwrt @ main（满血 NSS 驱动）
             - 集成：passwall 全依赖（含 NaiveProxy）、QCN9074 vendor board-2.bin
             - 内置 `luci-app-ax900-hardware` 硬件控制（LED / 风扇 / 温度，来自 nixevol/Ax9000WRTBuild，PolyForm NC 1.0.0）
+            - 第三方插件：`luci-app-wolultra`（超级网络唤醒）/ `luci-app-mini-diskmanager`（磁盘管理）/ `luci-app-natmapt`（NATMap 打洞）/ `luci-app-partexp`（分区扩容）
+            - 语言：后台默认简体中文，仅携带中文语言包（不装其它语言）
+            - 中国区优化：`default-settings-chn`（时区 Asia/Shanghai、国内 NTP）；软件源 = 南大镜像（snapshots 滚动路径，跟随官方更新）
             - 默认：SSID `AX9000` 系列（无密码）、后台免密登录、LAN `192.168.31.1`
             - 灯效：顶部蓝常亮、前上联网指示（在线绿 / 断网红）、前下系统灯语；均可在 LuCI「AX9000 硬件」中调整
 
